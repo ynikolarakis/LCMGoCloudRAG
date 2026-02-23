@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env from project root (parent of backend/)
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore")
 
     # App
     ENVIRONMENT: str = "dev"
@@ -26,13 +31,13 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "default_documents"
 
     # LLM (Ollama dev / vLLM prod — same OpenAI-compatible API)
-    LLM_BASE_URL: str = "http://host.docker.internal:11434/v1"
+    LLM_BASE_URL: str = "http://localhost:11434/v1"
     LLM_MODEL: str = "qwen3:30b-a3b"
 
     # Embeddings
-    EMBEDDING_BASE_URL: str = "http://host.docker.internal:11434/v1"
+    EMBEDDING_BASE_URL: str = "http://localhost:11434/v1"
     EMBEDDING_MODEL: str = "qwen3-embedding:0.6b"
-    EMBEDDING_DIMENSION: int = 512
+    EMBEDDING_DIMENSION: int = 1024
 
     # Upload
     UPLOAD_DIR: str = "./uploads"
