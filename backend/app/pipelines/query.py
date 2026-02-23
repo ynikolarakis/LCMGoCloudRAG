@@ -115,6 +115,14 @@ def query_documents(question: str, client_id: str = "default") -> dict:
     result = pipeline.run(
         {
             "embedder": {"text": question},
+            "retriever": {
+                "filters": {
+                    "operator": "AND",
+                    "conditions": [
+                        {"field": "meta.client_id", "operator": "==", "value": client_id},
+                    ],
+                },
+            },
             "prompt_builder": {"query": question},
         }
     )
