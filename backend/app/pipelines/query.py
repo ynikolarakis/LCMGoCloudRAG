@@ -9,7 +9,8 @@ from haystack.components.embedders import OpenAITextEmbedder
 from haystack.components.generators.chat import OpenAIChatGenerator
 from haystack.dataclasses import ChatMessage
 from haystack.utils import Secret
-from haystack_integrations.components.retrievers.qdrant import QdrantEmbeddingRetriever
+from haystack_integrations.components.embedders.fastembed import FastembedSparseTextEmbedder
+from haystack_integrations.components.retrievers.qdrant import QdrantHybridRetriever
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
 
 from app.config import settings
@@ -40,28 +41,34 @@ Question: {{ query }}\
 
 
 def _get_document_store() -> QdrantDocumentStore:
-    """Create a QdrantDocumentStore instance."""
+    """Create a QdrantDocumentStore instance with sparse embedding support."""
     return QdrantDocumentStore(
         url=settings.QDRANT_URL,
         index=settings.QDRANT_COLLECTION,
         embedding_dim=settings.EMBEDDING_DIMENSION,
         recreate_index=False,
+        use_sparse_embeddings=True,
     )
 
 
 def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
-    """Build the Haystack query pipeline: embed -> retrieve -> prompt -> generate."""
+    """Build the Haystack hybrid query pipeline: sparse+dense embed -> hybrid retrieve -> prompt -> generate."""
     pipeline = Pipeline()
 
-    # Text embedder for the query
-    text_embedder = OpenAITextEmbedder(
+    # Sparse text embedder (BM25)
+    sparse_embedder = FastembedSparseTextEmbedder(
+        model=settings.SPARSE_EMBEDDING_MODEL,
+    )
+
+    # Dense text embedder (Qwen3 via Ollama)
+    dense_embedder = OpenAITextEmbedder(
         api_key=Secret.from_token("ollama"),
         model=settings.EMBEDDING_MODEL,
         api_base_url=settings.EMBEDDING_BASE_URL,
     )
 
-    # Qdrant retriever
-    retriever = QdrantEmbeddingRetriever(
+    # Hybrid retriever (RRF fusion of dense + sparse)
+    retriever = QdrantHybridRetriever(
         document_store=document_store,
         top_k=settings.RETRIEVER_TOP_K,
     )
@@ -84,12 +91,14 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
         },
     )
 
-    pipeline.add_component("embedder", text_embedder)
+    pipeline.add_component("sparse_embedder", sparse_embedder)
+    pipeline.add_component("dense_embedder", dense_embedder)
     pipeline.add_component("retriever", retriever)
     pipeline.add_component("prompt_builder", prompt_builder)
     pipeline.add_component("llm", llm)
 
-    pipeline.connect("embedder.embedding", "retriever.query_embedding")
+    pipeline.connect("sparse_embedder.sparse_embedding", "retriever.query_sparse_embedding")
+    pipeline.connect("dense_embedder.embedding", "retriever.query_embedding")
     pipeline.connect("retriever.documents", "prompt_builder.documents")
     pipeline.connect("prompt_builder.prompt", "llm.messages")
 
@@ -97,7 +106,7 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
 
 
 def query_documents(question: str, client_id: str = "default") -> dict:
-    """Run the RAG query pipeline.
+    """Run the hybrid RAG query pipeline.
 
     Args:
         question: The user's question.
@@ -114,7 +123,8 @@ def query_documents(question: str, client_id: str = "default") -> dict:
 
     result = pipeline.run(
         {
-            "embedder": {"text": question},
+            "sparse_embedder": {"text": question},
+            "dense_embedder": {"text": question},
             "retriever": {
                 "filters": {
                     "operator": "AND",
