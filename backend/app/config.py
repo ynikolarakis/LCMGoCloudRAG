@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     RERANKER_TOP_K: int = 5
     RERANKER_THRESHOLD: float = 0.3
 
+    # Guardrails
+    GUARDRAILS_ENABLED: bool = True
+    GUARDRAIL_INJECTION_THRESHOLD: float = 0.5
+    GUARDRAIL_HHEM_THRESHOLD: float = 0.5
+
     # Keycloak
     KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "docintel"

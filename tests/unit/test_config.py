@@ -61,3 +61,14 @@ def test_reranker_settings_have_defaults() -> None:
     assert settings.RERANKER_MODEL == "BAAI/bge-reranker-v2-m3"
     assert settings.RERANKER_TOP_K == 5
     assert settings.RERANKER_THRESHOLD == 0.3
+
+
+def test_guardrail_settings_have_defaults() -> None:
+    """Guardrail settings should have sensible defaults."""
+    settings = Settings(
+        DATABASE_URL="postgresql+asyncpg://x:x@localhost/x",
+        REDIS_URL="redis://localhost:6379/0",
+    )
+    assert settings.GUARDRAILS_ENABLED is True
+    assert settings.GUARDRAIL_INJECTION_THRESHOLD == 0.5
+    assert settings.GUARDRAIL_HHEM_THRESHOLD == 0.5

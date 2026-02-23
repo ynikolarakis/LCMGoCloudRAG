@@ -37,6 +37,7 @@ class AuditAction(str, enum.Enum):
     QUERY_SUBMITTED = "query_submitted"
     RESPONSE_GENERATED = "response_generated"
     GUARDRAIL_TRIGGERED = "guardrail_triggered"
+    GUARDRAIL_BLOCKED = "guardrail_blocked"
     ADMIN_ACTION = "admin_action"
 
 
