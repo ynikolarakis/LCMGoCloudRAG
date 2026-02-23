@@ -15,17 +15,35 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# Only manage our tables — ignore Keycloak and other shared tables
+OUR_TABLES = {t.name for t in Base.metadata.sorted_tables}
+
+
+def include_name(name, type_, parent_names):
+    if type_ == "table":
+        return name in OUR_TABLES
+    return True
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = settings.DATABASE_URL
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        include_name=include_name,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_name=include_name,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
