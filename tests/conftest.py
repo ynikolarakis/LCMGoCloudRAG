@@ -24,7 +24,7 @@ sys.modules.setdefault("fastembed", _fastembed_stub)
 sys.modules.setdefault("fastembed.sparse", _fastembed_sparse_stub)
 sys.modules.setdefault("fastembed.sparse.sparse_text_embedding", _fastembed_sparse_text_stub)
 
-from app.main import app
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture

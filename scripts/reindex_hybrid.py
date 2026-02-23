@@ -9,6 +9,7 @@ This script:
 Usage:
     cd backend && PYTHONPATH=. python ../scripts/reindex_hybrid.py
 """
+
 from __future__ import annotations
 
 import asyncio
