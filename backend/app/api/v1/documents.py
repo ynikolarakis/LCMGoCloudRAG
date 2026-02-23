@@ -15,7 +15,6 @@ from app.database import get_db_session
 from app.exceptions import NotFoundError, ValidationError
 from app.models import Document, DocumentStatus, User
 from app.models.base import AuditAction, UserRole
-from app.pipelines.ingestion import ingest_document
 from app.schemas.document import (
     DocumentDetailResponse,
     DocumentResponse,
@@ -23,6 +22,7 @@ from app.schemas.document import (
     DocumentUploadResponse,
     PaginatedDocumentsResponse,
 )
+from app.tasks.ingestion import ingest_document_task
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -58,8 +58,8 @@ async def upload_document(
     """Upload a document for ingestion into the RAG pipeline.
 
     Validates the file, creates a Document row with status=queued, saves the
-    file to uploads/{client_id}/{doc_id}{suffix}, runs ingestion synchronously,
-    and writes an audit log entry. Returns 202 with document ID and status.
+    file to uploads/{client_id}/{doc_id}{suffix}, dispatches a Celery task for
+    async ingestion, and writes an audit log entry. Returns 202 immediately.
 
     Args:
         file: The uploaded file (PDF, DOCX, or PPTX).
@@ -117,40 +117,24 @@ async def upload_document(
         client_id=current_user.client_id,
     )
 
-    # 4. Run ingestion synchronously (Celery dispatch in a later task)
-    try:
-        doc.status = DocumentStatus.PROCESSING
-        await session.flush()
+    # 4. Dispatch Celery task for async ingestion
+    ingest_document_task.apply_async(
+        args=[str(doc_id), str(file_path), current_user.client_id],
+    )
 
-        haystack_docs = ingest_document(
-            file_path=str(file_path),
-            filename=file.filename,
-            client_id=current_user.client_id,
-        )
-
-        doc.status = DocumentStatus.COMPLETED
-        doc.chunk_count = len(haystack_docs)
-        await session.flush()
-
-        logger.info(
-            "document_upload_complete",
-            doc_id=str(doc_id),
-            filename=file.filename,
-            chunk_count=len(haystack_docs),
-            user_id=str(current_user.id),
-        )
-    except Exception:
-        doc.status = DocumentStatus.FAILED
-        await session.flush()
-        logger.exception("document_ingestion_failed", doc_id=str(doc_id))
-        raise
+    logger.info(
+        "document_upload_queued",
+        doc_id=str(doc_id),
+        filename=file.filename,
+        user_id=str(current_user.id),
+    )
 
     return DocumentUploadResponse(
         id=doc_id,
         filename=file.filename,
         status=doc.status,
-        chunk_count=doc.chunk_count,
-        message=f"Document processed successfully. {doc.chunk_count} chunks indexed.",
+        chunk_count=None,
+        message="Document queued for processing.",
     )
 
 

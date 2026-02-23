@@ -61,7 +61,32 @@ services:
       postgres:
         condition: service_healthy
 
+  celery-worker:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.worker
+    working_dir: /app
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ../backend:/app
+      - upload_data:/app/uploads
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ragadmin}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-docintel}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      LLM_BASE_URL: http://host.docker.internal:11434/v1
+      EMBEDDING_BASE_URL: http://host.docker.internal:11434/v1
+      ENVIRONMENT: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
 volumes:
   qdrant_data:
   postgres_data:
   redis_data:
+  upload_data:
