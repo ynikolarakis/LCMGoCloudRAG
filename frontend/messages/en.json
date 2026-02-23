@@ -6,22 +6,76 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "search": "Search"
+    "search": "Search",
+    "confirm": "Confirm",
+    "close": "Close",
+    "retry": "Retry"
+  },
+  "nav": {
+    "chat": "Chat",
+    "documents": "Documents",
+    "admin": "Admin"
   },
   "chat": {
+    "title": "Chat",
     "placeholder": "Ask a question about your documents...",
     "sendButton": "Send",
-    "noAnswer": "Cannot find answer in the available documents"
+    "noAnswer": "Cannot find answer in the available documents",
+    "connectionStatus": {
+      "connected": "Connected",
+      "reconnecting": "Reconnecting...",
+      "disconnected": "Disconnected"
+    },
+    "streaming": "Generating answer...",
+    "citationsLabel": "Sources"
   },
   "documents": {
+    "title": "Documents",
     "uploadTitle": "Upload Document",
     "uploadButton": "Upload",
+    "uploadDragDrop": "Drag and drop a file here, or click to browse",
+    "uploadAccepted": "Accepted: PDF, DOCX, TXT (max 50MB)",
     "processing": "Processing...",
-    "completed": "Completed"
+    "completed": "Completed",
+    "queued": "Queued",
+    "failed": "Failed",
+    "deleteConfirm": "Are you sure you want to delete this document?",
+    "deleteDescription": "This action cannot be undone. The document and all its data will be permanently removed.",
+    "noDocuments": "No documents uploaded yet",
+    "columns": {
+      "filename": "Filename",
+      "status": "Status",
+      "pages": "Pages",
+      "uploaded": "Uploaded",
+      "actions": "Actions"
+    }
   },
   "admin": {
+    "title": "Admin",
+    "healthTab": "Health",
+    "auditTab": "Audit Log",
     "healthStatus": "System Health",
-    "users": "Users",
-    "settings": "Settings"
+    "healthy": "Healthy",
+    "unhealthy": "Unhealthy",
+    "degraded": "Degraded",
+    "services": {
+      "database": "Database",
+      "qdrant": "Qdrant",
+      "redis": "Redis",
+      "llm": "LLM"
+    },
+    "auditLog": {
+      "title": "Audit Log",
+      "filterByAction": "Filter by action",
+      "allActions": "All actions",
+      "columns": {
+        "timestamp": "Timestamp",
+        "user": "User",
+        "action": "Action",
+        "resourceType": "Resource",
+        "details": "Details"
+      },
+      "noEntries": "No audit log entries"
+    }
   }
 }

@@ -6,22 +6,76 @@
     "save": "Αποθήκευση",
     "cancel": "Ακύρωση",
     "delete": "Διαγραφή",
-    "search": "Αναζήτηση"
+    "search": "Αναζήτηση",
+    "confirm": "Επιβεβαίωση",
+    "close": "Κλείσιμο",
+    "retry": "Επανάληψη"
+  },
+  "nav": {
+    "chat": "Συνομιλία",
+    "documents": "Έγγραφα",
+    "admin": "Διαχείριση"
   },
   "chat": {
+    "title": "Συνομιλία",
     "placeholder": "Κάντε μια ερώτηση σχετικά με τα έγγραφά σας...",
     "sendButton": "Αποστολή",
-    "noAnswer": "Δεν βρέθηκε απάντηση στα διαθέσιμα έγγραφα"
+    "noAnswer": "Δεν βρέθηκε απάντηση στα διαθέσιμα έγγραφα",
+    "connectionStatus": {
+      "connected": "Συνδεδεμένο",
+      "reconnecting": "Επανασύνδεση...",
+      "disconnected": "Αποσυνδεδεμένο"
+    },
+    "streaming": "Δημιουργία απάντησης...",
+    "citationsLabel": "Πηγές"
   },
   "documents": {
+    "title": "Έγγραφα",
     "uploadTitle": "Μεταφόρτωση Εγγράφου",
     "uploadButton": "Μεταφόρτωση",
+    "uploadDragDrop": "Σύρετε και αποθέστε ένα αρχείο εδώ ή κάντε κλικ για αναζήτηση",
+    "uploadAccepted": "Αποδεκτά: PDF, DOCX, TXT (μέγ. 50MB)",
     "processing": "Επεξεργασία...",
-    "completed": "Ολοκληρώθηκε"
+    "completed": "Ολοκληρώθηκε",
+    "queued": "Σε αναμονή",
+    "failed": "Αποτυχία",
+    "deleteConfirm": "Είστε σίγουροι ότι θέλετε να διαγράψετε αυτό το έγγραφο;",
+    "deleteDescription": "Αυτή η ενέργεια δεν μπορεί να αναιρεθεί. Το έγγραφο και όλα τα δεδομένα του θα αφαιρεθούν οριστικά.",
+    "noDocuments": "Δεν έχουν μεταφορτωθεί έγγραφα ακόμα",
+    "columns": {
+      "filename": "Όνομα αρχείου",
+      "status": "Κατάσταση",
+      "pages": "Σελίδες",
+      "uploaded": "Μεταφορτώθηκε",
+      "actions": "Ενέργειες"
+    }
   },
   "admin": {
+    "title": "Διαχείριση",
+    "healthTab": "Υγεία",
+    "auditTab": "Αρχείο Καταγραφής",
     "healthStatus": "Κατάσταση Συστήματος",
-    "users": "Χρήστες",
-    "settings": "Ρυθμίσεις"
+    "healthy": "Υγιές",
+    "unhealthy": "Μη Υγιές",
+    "degraded": "Υποβαθμισμένο",
+    "services": {
+      "database": "Βάση Δεδομένων",
+      "qdrant": "Qdrant",
+      "redis": "Redis",
+      "llm": "LLM"
+    },
+    "auditLog": {
+      "title": "Αρχείο Καταγραφής",
+      "filterByAction": "Φιλτράρισμα κατά ενέργεια",
+      "allActions": "Όλες οι ενέργειες",
+      "columns": {
+        "timestamp": "Χρονοσφραγίδα",
+        "user": "Χρήστης",
+        "action": "Ενέργεια",
+        "resourceType": "Πόρος",
+        "details": "Λεπτομέρειες"
+      },
+      "noEntries": "Δεν υπάρχουν καταχωρήσεις"
+    }
   }
 }
