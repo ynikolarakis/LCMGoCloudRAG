@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth import get_current_user
+from app.models import User
 from app.pipelines.query import query_documents
 from app.schemas.query import Citation, QueryRequest, QueryResponseSchema
 
@@ -11,7 +13,10 @@ router = APIRouter(tags=["query"])
 
 
 @router.post("/query", response_model=QueryResponseSchema)
-async def submit_query(request: QueryRequest) -> QueryResponseSchema:
+async def submit_query(
+    request: QueryRequest,
+    current_user: User = Depends(get_current_user),
+) -> QueryResponseSchema:
     """Submit a question to the RAG pipeline.
 
     Embeds the question, retrieves relevant chunks from Qdrant,
@@ -19,13 +24,14 @@ async def submit_query(request: QueryRequest) -> QueryResponseSchema:
 
     Args:
         request: QueryRequest containing the question and optional client_id.
+        current_user: The authenticated user, injected by FastAPI.
 
     Returns:
         QueryResponseSchema with the answer, citations, model used, and latency.
     """
     result = query_documents(
         question=request.question,
-        client_id=request.client_id,
+        client_id=current_user.client_id,
     )
 
     citations = [
@@ -42,6 +48,7 @@ async def submit_query(request: QueryRequest) -> QueryResponseSchema:
         question_length=len(request.question),
         citation_count=len(citations),
         latency_ms=result["latency_ms"],
+        user_id=str(current_user.id),
     )
 
     return QueryResponseSchema(

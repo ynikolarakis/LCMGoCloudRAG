@@ -6,10 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import structlog
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 
-from app.config import settings
+from app.auth import get_current_user
 from app.exceptions import ValidationError
+from app.models import User
 from app.pipelines.ingestion import ingest_document
 from app.schemas.document import DocumentUploadResponse
 
@@ -25,7 +26,10 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
-async def upload_document(file: UploadFile = File(...)) -> DocumentUploadResponse:
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> DocumentUploadResponse:
     """Upload a document for ingestion into the RAG pipeline.
 
     Accepts PDF, DOCX, PPTX files. Parses, chunks, embeds, and stores in Qdrant.
@@ -33,6 +37,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
 
     Args:
         file: The uploaded file (PDF, DOCX, or PPTX).
+        current_user: The authenticated user, injected by FastAPI.
 
     Returns:
         DocumentUploadResponse with document ID, status, and chunk count.
@@ -64,7 +69,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
         haystack_docs = ingest_document(
             file_path=tmp_path,
             filename=file.filename,
-            client_id=settings.CLIENT_ID,
+            client_id=current_user.client_id,
         )
 
         logger.info(
@@ -72,6 +77,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
             doc_id=str(doc_id),
             filename=file.filename,
             chunk_count=len(haystack_docs),
+            user_id=str(current_user.id),
         )
 
         return DocumentUploadResponse(
