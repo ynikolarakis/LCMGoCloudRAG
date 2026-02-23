@@ -1,0 +1,27 @@
+{
+  "common": {
+    "appName": "LCM DocIntel",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "search": "Search"
+  },
+  "chat": {
+    "placeholder": "Ask a question about your documents...",
+    "sendButton": "Send",
+    "noAnswer": "Cannot find answer in the available documents"
+  },
+  "documents": {
+    "uploadTitle": "Upload Document",
+    "uploadButton": "Upload",
+    "processing": "Processing...",
+    "completed": "Completed"
+  },
+  "admin": {
+    "healthStatus": "System Health",
+    "users": "Users",
+    "settings": "Settings"
+  }
+}
