@@ -1,0 +1,11 @@
+LCM DocIntel Test Document
+
+This is a sample document used for end-to-end testing.
+It contains text about contract terms and conditions.
+
+Section 1: Agreement Terms
+The agreement shall remain in force for a period of twenty-four (24) months
+from the date of execution by both parties.
+
+Section 2: Payment Terms
+Payment terms are net 30 days from invoice date.
