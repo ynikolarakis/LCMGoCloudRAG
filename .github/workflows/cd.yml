@@ -1,0 +1,77 @@
+name: CD
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        run: |
+          echo "TAG=${{ github.sha }}" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=${{ steps.ecr-login.outputs.registry }}" >> $GITHUB_ENV
+
+      - name: Build and push backend image
+        run: |
+          docker build -f docker/Dockerfile.backend -t $ECR_REGISTRY/docintel-backend:$TAG -t $ECR_REGISTRY/docintel-backend:latest backend/
+          docker push $ECR_REGISTRY/docintel-backend:$TAG
+          docker push $ECR_REGISTRY/docintel-backend:latest
+
+      - name: Build and push frontend image
+        run: |
+          docker build -f docker/Dockerfile.frontend -t $ECR_REGISTRY/docintel-frontend:$TAG -t $ECR_REGISTRY/docintel-frontend:latest frontend/
+          docker push $ECR_REGISTRY/docintel-frontend:$TAG
+          docker push $ECR_REGISTRY/docintel-frontend:latest
+
+      - name: Build and push worker image
+        run: |
+          docker build -f docker/Dockerfile.worker -t $ECR_REGISTRY/docintel-worker:$TAG -t $ECR_REGISTRY/docintel-worker:latest backend/
+          docker push $ECR_REGISTRY/docintel-worker:$TAG
+          docker push $ECR_REGISTRY/docintel-worker:latest
+
+      - name: Deploy backend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ secrets.ECS_BACKEND_TASK_DEF }}
+          service: ${{ secrets.ECS_BACKEND_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Deploy frontend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ secrets.ECS_FRONTEND_TASK_DEF }}
+          service: ${{ secrets.ECS_FRONTEND_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Deploy worker to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ secrets.ECS_WORKER_TASK_DEF }}
+          service: ${{ secrets.ECS_WORKER_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
