@@ -10,6 +10,7 @@ from haystack import Pipeline
 from haystack.components.embedders import OpenAIDocumentEmbedder
 from haystack.components.writers import DocumentWriter
 from haystack.utils import Secret
+from haystack_integrations.components.embedders.fastembed import FastembedSparseDocumentEmbedder
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,19 +22,24 @@ logger = structlog.get_logger()
 
 
 def _get_document_store() -> QdrantDocumentStore:
-    """Create a QdrantDocumentStore instance."""
+    """Create a QdrantDocumentStore instance with sparse embedding support."""
     return QdrantDocumentStore(
         url=settings.QDRANT_URL,
         index=settings.QDRANT_COLLECTION,
         embedding_dim=settings.EMBEDDING_DIMENSION,
         recreate_index=False,
         wait_result_from_api=True,
+        use_sparse_embeddings=True,
     )
 
 
 def _build_ingestion_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
-    """Build the Haystack ingestion pipeline: embed -> write to Qdrant."""
+    """Build the Haystack ingestion pipeline: sparse embed -> dense embed -> write to Qdrant."""
     pipeline = Pipeline()
+
+    sparse_embedder = FastembedSparseDocumentEmbedder(
+        model=settings.SPARSE_EMBEDDING_MODEL,
+    )
 
     embedder = OpenAIDocumentEmbedder(
         api_key=Secret.from_token("ollama"),
@@ -44,8 +50,10 @@ def _build_ingestion_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
 
     writer = DocumentWriter(document_store=document_store)
 
+    pipeline.add_component("sparse_embedder", sparse_embedder)
     pipeline.add_component("embedder", embedder)
     pipeline.add_component("writer", writer)
+    pipeline.connect("sparse_embedder.documents", "embedder.documents")
     pipeline.connect("embedder.documents", "writer.documents")
 
     return pipeline
@@ -118,7 +126,7 @@ def ingest_document(
     # 4. Embed and write to Qdrant via Haystack pipeline
     store = _get_document_store()
     pipeline = _build_ingestion_pipeline(store)
-    result = pipeline.run({"embedder": {"documents": haystack_docs}})
+    result = pipeline.run({"sparse_embedder": {"documents": haystack_docs}})
     written_count = result.get("writer", {}).get("documents_written", len(haystack_docs))
     logger.info("ingestion_complete", filename=filename, chunks_written=written_count)
 
