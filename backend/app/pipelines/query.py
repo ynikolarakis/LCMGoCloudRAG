@@ -112,10 +112,12 @@ def query_documents(question: str, client_id: str = "default") -> dict:
     store = _get_document_store()
     pipeline = _build_query_pipeline(store)
 
-    result = pipeline.run({
-        "embedder": {"text": question},
-        "prompt_builder": {"query": question},
-    })
+    result = pipeline.run(
+        {
+            "embedder": {"text": question},
+            "prompt_builder": {"query": question},
+        }
+    )
 
     latency_ms = round((time.perf_counter() - start_time) * 1000)
 

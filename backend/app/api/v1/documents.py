@@ -45,9 +45,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
         raise ValidationError("Filename is required")
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise ValidationError(
-            f"Unsupported file type: {file.content_type}. Allowed: PDF, DOCX, PPTX"
-        )
+        raise ValidationError(f"Unsupported file type: {file.content_type}. Allowed: PDF, DOCX, PPTX")
 
     # Read file content
     content = await file.read()

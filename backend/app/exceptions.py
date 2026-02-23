@@ -25,7 +25,7 @@ class AuthError(AppError):
         super().__init__(detail=detail, status_code=status.HTTP_401_UNAUTHORIZED)
 
 
-class PermissionError(AppError):
+class ForbiddenError(AppError):
     def __init__(self, detail: str = "Insufficient permissions") -> None:
         super().__init__(detail=detail, status_code=status.HTTP_403_FORBIDDEN)
 

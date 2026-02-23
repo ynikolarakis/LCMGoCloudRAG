@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import tiktoken
 import structlog
+import tiktoken
 
 logger = structlog.get_logger()
 
@@ -76,11 +76,15 @@ def chunk_text(
     if current_chunk:
         chunks.append("\n\n".join(current_chunk))
 
-    # Merge small trailing chunks with previous
+    # Merge small trailing chunks with previous (but never exceed max_tokens)
     merged: list[str] = []
     for chunk in chunks:
         if merged and count_tokens(chunk) < min_tokens:
-            merged[-1] = merged[-1] + "\n\n" + chunk
+            candidate = merged[-1] + "\n\n" + chunk
+            if count_tokens(candidate) <= max_tokens:
+                merged[-1] = candidate
+            else:
+                merged.append(chunk)
         else:
             merged.append(chunk)
 
