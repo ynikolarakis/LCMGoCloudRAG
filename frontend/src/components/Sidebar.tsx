@@ -2,25 +2,55 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { FileText, MessageSquare, Settings, Menu, X, Globe } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Settings,
+  X,
+} from "lucide-react";
 import { Link, usePathname } from "@/i18n/routing";
 import { useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/components/AuthProvider";
+import { hasRole } from "@/lib/auth";
 
 const navItems = [
-  { href: "/chat" as const, icon: MessageSquare, labelKey: "nav.chat" as const },
-  { href: "/documents" as const, icon: FileText, labelKey: "nav.documents" as const },
-  { href: "/admin" as const, icon: Settings, labelKey: "nav.admin" as const },
+  {
+    href: "/chat" as const,
+    icon: MessageSquare,
+    labelKey: "nav.chat" as const,
+    requiredRole: null,
+  },
+  {
+    href: "/documents" as const,
+    icon: FileText,
+    labelKey: "nav.documents" as const,
+    requiredRole: null,
+  },
+  {
+    href: "/admin" as const,
+    icon: Settings,
+    labelKey: "nav.admin" as const,
+    requiredRole: "admin" as const,
+  },
 ];
 
 export function Sidebar() {
   const t = useTranslations();
   const pathname = usePathname();
   const locale = useLocale();
+  const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const otherLocale = locale === "en" ? "el" : "en";
+
+  const visibleItems = navItems.filter(
+    (item) => !item.requiredRole || hasRole(user, item.requiredRole),
+  );
 
   return (
     <>
@@ -61,7 +91,7 @@ export function Sidebar() {
         <Separator />
 
         <nav className="flex-1 space-y-1 px-3 py-4" data-testid="sidebar-nav">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
@@ -97,6 +127,31 @@ export function Sidebar() {
             {otherLocale === "el" ? "Ελληνικά" : "English"}
           </Link>
         </div>
+
+        {/* User info and logout */}
+        {user && (
+          <>
+            <Separator />
+            <div className="p-3 space-y-1">
+              <p
+                className="truncate px-3 py-1 text-xs text-muted-foreground"
+                data-testid="user-email"
+              >
+                {user.email}
+              </p>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={logout}
+                data-testid="logout-button"
+                aria-label={t("auth.logout")}
+              >
+                <LogOut className="h-4 w-4" />
+                {t("auth.logout")}
+              </Button>
+            </div>
+          </>
+        )}
       </aside>
     </>
   );

@@ -9,7 +9,13 @@
     "search": "Search",
     "confirm": "Confirm",
     "close": "Close",
-    "retry": "Retry"
+    "retry": "Retry",
+    "accessDenied": "Access Denied",
+    "accessDeniedDescription": "You do not have permission to view this page."
+  },
+  "auth": {
+    "logout": "Logout",
+    "loading": "Authenticating..."
   },
   "nav": {
     "chat": "Chat",

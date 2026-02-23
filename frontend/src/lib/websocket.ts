@@ -26,9 +26,11 @@ export class WebSocketManager {
   private messageQueue: string[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private status: ConnectionStatus = "disconnected";
+  private _token: string | null = null;
 
-  connect(callbacks: WebSocketCallbacks): void {
+  connect(callbacks: WebSocketCallbacks, token?: string | null): void {
     this.callbacks = callbacks;
+    this._token = token || null;
     this.retryCount = 0;
     this._connect();
   }
@@ -36,8 +38,12 @@ export class WebSocketManager {
   private _connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
+    const url = this._token
+      ? `${WS_BASE}?token=${this._token}`
+      : WS_BASE;
+
     try {
-      this.ws = new WebSocket(WS_BASE);
+      this.ws = new WebSocket(url);
     } catch {
       this._scheduleReconnect();
       return;

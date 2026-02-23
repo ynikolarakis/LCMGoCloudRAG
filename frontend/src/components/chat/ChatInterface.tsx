@@ -13,9 +13,11 @@ import {
   type ConnectionStatus,
   type WsCitation,
 } from "@/lib/websocket";
+import { useAuth } from "@/components/AuthProvider";
 
 export function ChatInterface() {
   const t = useTranslations("chat");
+  const { token } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -70,12 +72,12 @@ export function ChatInterface() {
         setIsStreaming(false);
       },
       onStatusChange: setConnectionStatus,
-    });
+    }, token);
 
     return () => {
       ws.disconnect();
     };
-  }, []);
+  }, [token]);
 
   const handleSend = useCallback(() => {
     const question = input.trim();

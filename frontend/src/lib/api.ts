@@ -1,6 +1,16 @@
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+let _authToken: string | null = null;
+
+export function setAuthToken(token: string | null): void {
+  _authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return _authToken;
+}
+
 // --- Types matching backend Pydantic schemas ---
 
 export interface ServiceStatus {
@@ -64,6 +74,15 @@ export interface PaginatedAuditLogsResponse {
   page_size: number;
 }
 
+// --- Auth helpers ---
+
+function authHeaders(): Record<string, string> {
+  if (_authToken) {
+    return { Authorization: `Bearer ${_authToken}` };
+  }
+  return {};
+}
+
 // --- Internal fetch wrapper ---
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -71,6 +90,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...init?.headers,
     },
   });
@@ -101,7 +121,10 @@ export async function fetchDocuments(
 }
 
 export async function deleteDocument(docId: string): Promise<void> {
-  await fetch(`${API_BASE}/documents/${docId}`, { method: "DELETE" });
+  await fetch(`${API_BASE}/documents/${docId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
 }
 
 export async function uploadDocument(file: File): Promise<{ id: string }> {
@@ -110,6 +133,7 @@ export async function uploadDocument(file: File): Promise<{ id: string }> {
 
   const res = await fetch(`${API_BASE}/documents/upload`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   });
 

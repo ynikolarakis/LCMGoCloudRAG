@@ -8,6 +8,18 @@ vi.mock("next-intl", () => ({
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// Mock AuthProvider so components that call useAuth() work in isolation
+vi.mock("@/components/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "test-user", email: "test@test.com", name: "Test User", roles: ["user"] },
+    token: "mock-token",
+    isAuthenticated: true,
+    isLoading: false,
+    logout: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock("@/i18n/routing", () => ({
   Link: ({
     children,
