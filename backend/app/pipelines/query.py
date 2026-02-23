@@ -7,6 +7,7 @@ from haystack import Pipeline
 from haystack.components.builders import ChatPromptBuilder
 from haystack.components.embedders import OpenAITextEmbedder
 from haystack.components.generators.chat import OpenAIChatGenerator
+from haystack.components.rankers import TransformersSimilarityRanker
 from haystack.dataclasses import ChatMessage
 from haystack.utils import Secret
 from haystack_integrations.components.embedders.fastembed import FastembedSparseTextEmbedder
@@ -73,6 +74,14 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
         top_k=settings.RETRIEVER_TOP_K,
     )
 
+    # Reranker (cross-encoder)
+    ranker = TransformersSimilarityRanker(
+        model=settings.RERANKER_MODEL,
+        top_k=settings.RERANKER_TOP_K,
+        score_threshold=settings.RERANKER_THRESHOLD,
+        scale_score=True,
+    )
+
     # Chat prompt builder with system + user template
     messages_template = [
         ChatMessage.from_system(SYSTEM_PROMPT),
@@ -94,12 +103,14 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
     pipeline.add_component("sparse_embedder", sparse_embedder)
     pipeline.add_component("dense_embedder", dense_embedder)
     pipeline.add_component("retriever", retriever)
+    pipeline.add_component("ranker", ranker)
     pipeline.add_component("prompt_builder", prompt_builder)
     pipeline.add_component("llm", llm)
 
     pipeline.connect("sparse_embedder.sparse_embedding", "retriever.query_sparse_embedding")
     pipeline.connect("dense_embedder.embedding", "retriever.query_embedding")
-    pipeline.connect("retriever.documents", "prompt_builder.documents")
+    pipeline.connect("retriever.documents", "ranker.documents")
+    pipeline.connect("ranker.documents", "prompt_builder.documents")
     pipeline.connect("prompt_builder.prompt", "llm.messages")
 
     return pipeline
@@ -133,6 +144,7 @@ def query_documents(question: str, client_id: str = "default") -> dict:
                     ],
                 },
             },
+            "ranker": {"query": question},
             "prompt_builder": {"query": question},
         }
     )
