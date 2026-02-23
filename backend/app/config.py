@@ -53,6 +53,20 @@ class Settings(BaseSettings):
 
     # Keycloak
     KEYCLOAK_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "docintel"
+    KEYCLOAK_CLIENT_ID: str = "docintel-api"
+    KEYCLOAK_CLIENT_SECRET: str | None = None
+
+    # Celery
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
+
+    def model_post_init(self, __context: object) -> None:
+        """Set Celery URLs from Redis if not explicitly provided."""
+        if not self.CELERY_BROKER_URL:
+            object.__setattr__(self, "CELERY_BROKER_URL", self.REDIS_URL)
+        if not self.CELERY_RESULT_BACKEND:
+            object.__setattr__(self, "CELERY_RESULT_BACKEND", self.REDIS_URL)
 
 
 settings = Settings()
