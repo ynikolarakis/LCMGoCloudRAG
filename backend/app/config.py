@@ -47,9 +47,17 @@ class Settings(BaseSettings):
     CHUNK_MAX_TOKENS: int = 512
     CHUNK_MIN_TOKENS: int = 200
     CHUNK_OVERLAP_PCT: float = 0.15
-    RETRIEVER_TOP_K: int = 5
+    RETRIEVER_TOP_K: int = 50
     LLM_TEMPERATURE: float = 0.1
     LLM_MAX_TOKENS: int = 1024
+
+    # Sparse Embedding
+    SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
+
+    # Reranker
+    RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    RERANKER_TOP_K: int = 5
+    RERANKER_THRESHOLD: float = 0.3
 
     # Keycloak
     KEYCLOAK_URL: str = "http://localhost:8080"
