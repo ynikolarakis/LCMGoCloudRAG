@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     SECRET_KEY: SecretStr = SecretStr("dev-secret-key-change-in-production")
     CLIENT_ID: str = "default"
 
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3000"
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://ragadmin:devpassword@localhost:5432/docintel"
 
