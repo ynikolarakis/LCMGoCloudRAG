@@ -9,7 +9,9 @@ def test_expand_query_returns_variants(mock_gen_cls: MagicMock) -> None:
     """expand_query should return a list of query variants including the original."""
     mock_gen = MagicMock()
     mock_gen.run.return_value = {
-        "replies": [MagicMock(text=json.dumps(["What is the contract duration?", "Ποια είναι η διάρκεια της σύμβασης;"]))]
+        "replies": [
+            MagicMock(text=json.dumps(["What is the contract duration?", "Ποια είναι η διάρκεια της σύμβασης;"]))
+        ]
     }
     mock_gen_cls.return_value = mock_gen
 
@@ -37,9 +39,7 @@ def test_expand_query_disabled_returns_original(mock_settings: MagicMock) -> Non
 def test_expand_query_handles_malformed_llm_response(mock_gen_cls: MagicMock) -> None:
     """If LLM returns non-JSON, should fall back to original query only."""
     mock_gen = MagicMock()
-    mock_gen.run.return_value = {
-        "replies": [MagicMock(text="not valid json")]
-    }
+    mock_gen.run.return_value = {"replies": [MagicMock(text="not valid json")]}
     mock_gen_cls.return_value = mock_gen
 
     from app.pipelines.expansion import expand_query

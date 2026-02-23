@@ -15,6 +15,7 @@ from haystack_integrations.components.retrievers.qdrant import QdrantHybridRetri
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
 
 from app.config import settings
+from app.pipelines.expansion import expand_query
 
 logger = structlog.get_logger()
 
@@ -117,7 +118,7 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
 
 
 def query_documents(question: str, client_id: str = "default") -> dict:
-    """Run the hybrid RAG query pipeline.
+    """Run the hybrid RAG query pipeline with query expansion.
 
     Args:
         question: The user's question.
@@ -132,31 +133,45 @@ def query_documents(question: str, client_id: str = "default") -> dict:
     store = _get_document_store()
     pipeline = _build_query_pipeline(store)
 
-    result = pipeline.run(
-        {
-            "sparse_embedder": {"text": question},
-            "dense_embedder": {"text": question},
-            "retriever": {
-                "filters": {
-                    "operator": "AND",
-                    "conditions": [
-                        {"field": "meta.client_id", "operator": "==", "value": client_id},
-                    ],
+    # Expand query into cross-lingual variants
+    variants = expand_query(question)
+    logger.info("query_variants", count=len(variants))
+
+    # Run pipeline for each variant and merge retrieved docs
+    all_retrieved: dict[str, object] = {}  # doc_id -> doc
+    result: dict = {}
+    for variant in variants:
+        result = pipeline.run(
+            {
+                "sparse_embedder": {"text": variant},
+                "dense_embedder": {"text": variant},
+                "retriever": {
+                    "filters": {
+                        "operator": "AND",
+                        "conditions": [
+                            {"field": "meta.client_id", "operator": "==", "value": client_id},
+                        ],
+                    },
                 },
-            },
-            "ranker": {"query": question},
-            "prompt_builder": {"query": question},
-        }
-    )
+                "ranker": {"query": variant},
+                "prompt_builder": {"query": question},
+            }
+        )
+
+        # Merge retrieved docs (keep highest-scored per doc ID)
+        for doc in result.get("retriever", {}).get("documents", []):
+            doc_key = doc.id
+            if doc_key not in all_retrieved or (doc.score and doc.score > all_retrieved[doc_key].score):
+                all_retrieved[doc_key] = doc
 
     latency_ms = round((time.perf_counter() - start_time) * 1000)
 
-    # Extract answer from LLM response
+    # If we have multiple variants, we already got the LLM answer from the last run.
+    # For single variant, result is already set from the loop.
     replies = result.get("llm", {}).get("replies", [])
     answer_text = replies[0].text if replies else "Cannot find answer in the available documents"
 
-    # Extract retrieved documents for citation metadata
-    retrieved_docs = result.get("retriever", {}).get("documents", [])
+    retrieved_docs = list(all_retrieved.values())
     citations = [
         {
             "source": doc.meta.get("source", "unknown"),
@@ -170,6 +185,7 @@ def query_documents(question: str, client_id: str = "default") -> dict:
         "query_complete",
         latency_ms=latency_ms,
         num_retrieved=len(retrieved_docs),
+        num_variants=len(variants),
         answer_length=len(answer_text),
     )
 
