@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     GUARDRAIL_INJECTION_THRESHOLD: float = 0.5
     GUARDRAIL_HHEM_THRESHOLD: float = 0.5
 
+    # Query Expansion
+    QUERY_EXPANSION_ENABLED: bool = True
+
     # Keycloak
     KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "docintel"

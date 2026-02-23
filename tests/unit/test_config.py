@@ -72,3 +72,10 @@ def test_guardrail_settings_have_defaults() -> None:
     assert settings.GUARDRAILS_ENABLED is True
     assert settings.GUARDRAIL_INJECTION_THRESHOLD == 0.5
     assert settings.GUARDRAIL_HHEM_THRESHOLD == 0.5
+
+
+def test_query_expansion_enabled_by_default() -> None:
+    """Query expansion should be enabled by default."""
+    from app.config import settings
+
+    assert settings.QUERY_EXPANSION_ENABLED is True
