@@ -12,8 +12,10 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
+"backend/app/api/v1/admin.py" = ["B008"]
 "backend/app/api/v1/documents.py" = ["B008"]
 "backend/app/api/v1/query.py" = ["B008"]
+"backend/app/api/v1/ws.py" = ["SIM105"]
 "backend/app/auth.py" = ["B008"]
 
 [tool.ruff.lint.isort]
