@@ -14,6 +14,10 @@ alembic>=1.13.0
 haystack-ai>=2.8.0
 qdrant-haystack>=6.0.0
 
+# Sparse Embedding (BM25 via FastEmbed)
+fastembed>=0.4.0
+fastembed-haystack>=1.0.0
+
 # LLM / Embeddings (OpenAI-compatible client for Ollama/vLLM)
 openai>=1.0.0
 
