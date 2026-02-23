@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 from docling.document_converter import DocumentConverter
@@ -11,8 +11,10 @@ from haystack.components.embedders import OpenAIDocumentEmbedder
 from haystack.components.writers import DocumentWriter
 from haystack.utils import Secret
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models import DocumentChunk
 from app.pipelines.chunking import chunk_text, count_tokens
 
 logger = structlog.get_logger()
@@ -121,3 +123,36 @@ def ingest_document(
     logger.info("ingestion_complete", filename=filename, chunks_written=written_count)
 
     return haystack_docs
+
+
+async def create_document_chunks(
+    session: AsyncSession,
+    doc_id: UUID,
+    chunks: list[str],
+    client_id: str = "default",
+) -> list[DocumentChunk]:
+    """Create DocumentChunk rows in the database for each text chunk.
+
+    Args:
+        session: Active async database session.
+        doc_id: Parent Document UUID.
+        chunks: List of chunk text strings.
+        client_id: Tenant identifier.
+
+    Returns:
+        List of DocumentChunk ORM objects (not yet committed).
+    """
+    chunk_rows: list[DocumentChunk] = []
+    for seq, chunk_content in enumerate(chunks):
+        chunk_row = DocumentChunk(
+            document_id=doc_id,
+            chunk_seq=seq,
+            content=chunk_content,
+            token_count=count_tokens(chunk_content),
+            client_id=client_id,
+        )
+        session.add(chunk_row)
+        chunk_rows.append(chunk_row)
+
+    await session.flush()
+    return chunk_rows
