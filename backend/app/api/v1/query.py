@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import write_audit_log
 from app.auth import get_current_user
+from app.cache import get_cached_response, set_cached_response
 from app.database import get_db_session
 from app.exceptions import AppError
 from app.guardrails import check_faithfulness, scan_input
@@ -39,6 +40,16 @@ async def submit_query(
     Returns:
         QueryResponseSchema with the answer, citations, model used, and latency.
     """
+    # 0. Cache check — return early if a cached response exists
+    cached = await get_cached_response(request_body.question, current_user.client_id)
+    if cached:
+        logger.info(
+            "query_cache_hit",
+            question_length=len(request_body.question),
+            user_id=str(current_user.id),
+        )
+        return QueryResponseSchema(**cached)
+
     # 1. Create Query row
     query_row = Query(
         user_id=current_user.id,
@@ -140,6 +151,15 @@ async def submit_query(
         latency_ms=result["latency_ms"],
         user_id=str(current_user.id),
     )
+
+    # 7. Cache the response for future identical queries
+    cache_data: dict = {
+        "answer": result["answer"],
+        "citations": [c.model_dump() for c in citations],
+        "model_used": result["model_used"],
+        "latency_ms": result["latency_ms"],
+    }
+    await set_cached_response(request_body.question, current_user.client_id, cache_data)
 
     return QueryResponseSchema(
         answer=result["answer"],

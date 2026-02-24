@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import write_audit_log
 from app.auth import RoleChecker, get_current_user
+from app.cache import invalidate_client_cache
 from app.config import settings
 from app.database import get_db_session
 from app.exceptions import NotFoundError, ValidationError
@@ -121,6 +122,9 @@ async def upload_document(
     ingest_document_task.apply_async(
         args=[str(doc_id), str(file_path), current_user.client_id],
     )
+
+    # 5. Invalidate cached query responses — the new document may change answers
+    await invalidate_client_cache(current_user.client_id)
 
     logger.info(
         "document_upload_queued",
@@ -350,7 +354,10 @@ async def delete_document(
         file_path.unlink()
         logger.info("file_deleted", path=str(file_path))
 
-    # 4. Audit log
+    # 4. Invalidate cached query responses — deleted document must not appear in answers
+    await invalidate_client_cache(current_user.client_id)
+
+    # 5. Audit log
     await write_audit_log(
         session=session,
         user_id=current_user.id,
