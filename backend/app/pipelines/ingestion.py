@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import DocumentChunk
-from app.pipelines.chunking import chunk_text, count_tokens
+from app.pipelines.chunking import ChunkResult, chunk_document, chunk_text, count_tokens
 
 logger = structlog.get_logger()
 
@@ -59,27 +59,28 @@ def _build_ingestion_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
     return pipeline
 
 
-def parse_document(file_path: str | Path) -> tuple[str, int]:
-    """Parse a document using Docling and return (text, page_count).
+def parse_document(file_path: str | Path) -> tuple[object, str, int]:
+    """Parse a document using Docling and return (document_model, text, page_count).
 
     Args:
         file_path: Path to the document file.
 
     Returns:
-        Tuple of (extracted_text, page_count).
+        Tuple of (docling_document, extracted_text, page_count).
     """
     converter = DocumentConverter()
     result = converter.convert(str(file_path))
     text = result.document.export_to_markdown()
     # Estimate page count from Docling metadata
     page_count = len(result.document.pages) if hasattr(result.document, "pages") else 1
-    return text, page_count
+    return result.document, text, page_count
 
 
 def ingest_document(
     file_path: str | Path,
     filename: str,
     client_id: str = "default",
+    summary: str = "",
 ) -> list[HaystackDocument]:
     """Full ingestion: parse -> chunk -> embed -> store in Qdrant.
 
@@ -87,6 +88,7 @@ def ingest_document(
         file_path: Path to the uploaded file.
         filename: Original filename for citation metadata.
         client_id: Client identifier for multi-tenancy.
+        summary: Optional document summary for contextual prefix.
 
     Returns:
         List of Haystack Documents that were indexed.
@@ -94,30 +96,47 @@ def ingest_document(
     logger.info("ingestion_started", filename=filename, client_id=client_id)
 
     # 1. Parse document
-    text, page_count = parse_document(file_path)
+    doc_model, text, page_count = parse_document(file_path)
     logger.info("document_parsed", filename=filename, page_count=page_count, chars=len(text))
 
-    # 2. Chunk text
-    chunks = chunk_text(
-        text,
+    # 2. Chunk using structure-aware chunking
+    chunk_results = chunk_document(
+        doc_model,
         target_tokens=settings.CHUNK_TARGET_TOKENS,
         max_tokens=settings.CHUNK_MAX_TOKENS,
         min_tokens=settings.CHUNK_MIN_TOKENS,
         overlap_pct=settings.CHUNK_OVERLAP_PCT,
     )
-    logger.info("document_chunked", filename=filename, num_chunks=len(chunks))
 
-    # 3. Create Haystack Documents with metadata
+    # Fallback to basic chunking if Docling model doesn't expose pages
+    if not chunk_results:
+        text_chunks = chunk_text(
+            text,
+            target_tokens=settings.CHUNK_TARGET_TOKENS,
+            max_tokens=settings.CHUNK_MAX_TOKENS,
+            min_tokens=settings.CHUNK_MIN_TOKENS,
+            overlap_pct=settings.CHUNK_OVERLAP_PCT,
+        )
+        chunk_results = [
+            ChunkResult(content=c, page_num=i + 1, token_count=count_tokens(c)) for i, c in enumerate(text_chunks)
+        ]
+
+    logger.info("document_chunked", filename=filename, num_chunks=len(chunk_results))
+
+    # 3. Create Haystack Documents with metadata + contextual prefix
     haystack_docs: list[HaystackDocument] = []
-    for seq, chunk_content in enumerate(chunks):
+    for seq, cr in enumerate(chunk_results):
+        content = f"{summary}\n\n{cr.content}" if summary else cr.content
         doc = HaystackDocument(
             id=str(uuid4()),
-            content=chunk_content,
+            content=content,
             meta={
                 "source": filename,
-                "page_num": seq + 1,  # Approximate; proper page mapping in Phase 2
+                "page_num": cr.page_num,
                 "chunk_seq": seq,
-                "token_count": count_tokens(chunk_content),
+                "section_title": cr.section_title,
+                "language": cr.language,
+                "token_count": cr.token_count,
                 "client_id": client_id,
             },
         )
@@ -136,29 +155,43 @@ def ingest_document(
 async def create_document_chunks(
     session: AsyncSession,
     doc_id: UUID,
-    chunks: list[str],
+    chunks: list[str | ChunkResult],
     client_id: str = "default",
 ) -> list[DocumentChunk]:
-    """Create DocumentChunk rows in the database for each text chunk.
+    """Create DocumentChunk rows in the database.
+
+    Accepts either a list of strings (legacy) or a list of ChunkResult objects.
 
     Args:
         session: Active async database session.
         doc_id: Parent Document UUID.
-        chunks: List of chunk text strings.
+        chunks: List of chunk text strings or ChunkResult objects.
         client_id: Tenant identifier.
 
     Returns:
         List of DocumentChunk ORM objects (not yet committed).
     """
     chunk_rows: list[DocumentChunk] = []
-    for seq, chunk_content in enumerate(chunks):
-        chunk_row = DocumentChunk(
-            document_id=doc_id,
-            chunk_seq=seq,
-            content=chunk_content,
-            token_count=count_tokens(chunk_content),
-            client_id=client_id,
-        )
+    for seq, chunk_item in enumerate(chunks):
+        if isinstance(chunk_item, ChunkResult):
+            chunk_row = DocumentChunk(
+                document_id=doc_id,
+                chunk_seq=seq,
+                content=chunk_item.content,
+                section_title=chunk_item.section_title,
+                page_num=chunk_item.page_num,
+                language=chunk_item.language,
+                token_count=chunk_item.token_count,
+                client_id=client_id,
+            )
+        else:
+            chunk_row = DocumentChunk(
+                document_id=doc_id,
+                chunk_seq=seq,
+                content=chunk_item,
+                token_count=count_tokens(chunk_item),
+                client_id=client_id,
+            )
         session.add(chunk_row)
         chunk_rows.append(chunk_row)
 

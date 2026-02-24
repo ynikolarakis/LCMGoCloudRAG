@@ -10,8 +10,9 @@ from app.celery_app import celery_app
 from app.config import settings
 from app.database import async_session_factory
 from app.models import Document, DocumentStatus
-from app.pipelines.chunking import chunk_text
+from app.pipelines.chunking import ChunkResult, chunk_document, chunk_text, count_tokens
 from app.pipelines.ingestion import create_document_chunks, ingest_document, parse_document
+from app.pipelines.summarizer import generate_summary
 
 logger = structlog.get_logger()
 
@@ -39,8 +40,10 @@ async def _do_ingest(doc_id: str, file_path: str, client_id: str) -> dict[str, o
     """Async implementation of document ingestion with DB persistence.
 
     Fetches the Document row, marks it PROCESSING, parses the file with
-    Docling, chunks the extracted text, persists DocumentChunk rows, runs
-    the Haystack embed-and-store pipeline, then marks the Document COMPLETED.
+    Docling, generates a summary, chunks the document with structure-aware
+    chunking (falling back to text chunking when pages are unavailable),
+    persists DocumentChunk rows, runs the Haystack embed-and-store pipeline,
+    then marks the Document COMPLETED.
 
     On any failure the Document is set to FAILED and the exception is
     re-raised so the Celery task can apply its retry policy.
@@ -72,48 +75,69 @@ async def _do_ingest(doc_id: str, file_path: str, client_id: str) -> dict[str, o
             logger.info("task_ingestion_started", doc_id=doc_id, file_path=file_path, client_id=client_id)
 
             # 2. Parse document with Docling
-            text, page_count = parse_document(file_path)
+            doc_model, text, page_count = parse_document(file_path)
             logger.info("task_document_parsed", doc_id=doc_id, page_count=page_count, chars=len(text))
 
-            # 3. Chunk extracted text
-            chunks = chunk_text(
-                text,
+            # 3. Generate document summary for contextual prefix
+            summary = generate_summary(text)
+            doc.summary = summary
+            await session.flush()
+
+            # 4. Chunk using structure-aware chunking
+            chunk_results = chunk_document(
+                doc_model,
                 target_tokens=settings.CHUNK_TARGET_TOKENS,
                 max_tokens=settings.CHUNK_MAX_TOKENS,
                 min_tokens=settings.CHUNK_MIN_TOKENS,
                 overlap_pct=settings.CHUNK_OVERLAP_PCT,
             )
-            logger.info("task_document_chunked", doc_id=doc_id, num_chunks=len(chunks))
 
-            # 4. Persist DocumentChunk rows to PostgreSQL
+            # Fallback to basic chunking when Docling model has no page structure
+            if not chunk_results:
+                text_chunks = chunk_text(
+                    text,
+                    target_tokens=settings.CHUNK_TARGET_TOKENS,
+                    max_tokens=settings.CHUNK_MAX_TOKENS,
+                    min_tokens=settings.CHUNK_MIN_TOKENS,
+                    overlap_pct=settings.CHUNK_OVERLAP_PCT,
+                )
+                chunk_results = [
+                    ChunkResult(content=c, page_num=i + 1, token_count=count_tokens(c))
+                    for i, c in enumerate(text_chunks)
+                ]
+
+            logger.info("task_document_chunked", doc_id=doc_id, num_chunks=len(chunk_results))
+
+            # 5. Persist DocumentChunk rows to PostgreSQL
             await create_document_chunks(
                 session=session,
                 doc_id=doc_uuid,
-                chunks=chunks,
+                chunks=chunk_results,
                 client_id=client_id,
             )
 
-            # 5. Embed chunks and write vectors to Qdrant via Haystack pipeline
+            # 6. Embed chunks and write vectors to Qdrant via Haystack pipeline
             ingest_document(
                 file_path=file_path,
                 filename=doc.original_filename,
                 client_id=client_id,
+                summary=summary,
             )
 
-            # 6. Mark document as completed with final counts
+            # 7. Mark document as completed with final counts
             doc.status = DocumentStatus.COMPLETED
-            doc.chunk_count = len(chunks)
+            doc.chunk_count = len(chunk_results)
             doc.page_count = page_count
             await session.commit()
 
             logger.info(
                 "task_ingestion_complete",
                 doc_id=doc_id,
-                chunk_count=len(chunks),
+                chunk_count=len(chunk_results),
                 page_count=page_count,
             )
 
-            return {"doc_id": doc_id, "status": "completed", "chunk_count": len(chunks)}
+            return {"doc_id": doc_id, "status": "completed", "chunk_count": len(chunk_results)}
 
         except Exception as exc:
             doc.status = DocumentStatus.FAILED
