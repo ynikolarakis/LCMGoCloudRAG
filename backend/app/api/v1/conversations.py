@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.database import get_db_session
-from app.models import Query, QueryResponse, User
+from app.models import Query, User
 from app.models.conversation import Conversation
 from app.schemas.conversation import (
     ConversationCreate,

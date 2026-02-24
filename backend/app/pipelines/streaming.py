@@ -61,39 +61,39 @@ async def stream_llm_response(
             httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT) as client,
             client.stream("POST", url, json=payload) as response,
         ):
-                if response.status_code != 200:
-                    body = await response.aread()
-                    logger.error(
-                        "streaming_http_error",
-                        status=response.status_code,
-                        body=body[:500],
+            if response.status_code != 200:
+                body = await response.aread()
+                logger.error(
+                    "streaming_http_error",
+                    status=response.status_code,
+                    body=body[:500],
+                )
+                return
+
+            async for raw_line in response.aiter_lines():
+                # aiter_lines() returns str in production httpx; the test
+                # mock yields bytes — normalise to str in both cases.
+                line: str = raw_line.decode() if isinstance(raw_line, bytes) else raw_line
+                if not line.startswith("data: "):
+                    continue
+
+                data_str = line[6:]  # strip "data: " prefix
+                if data_str.strip() == "[DONE]":
+                    break
+
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        yield content
+                except (json.JSONDecodeError, IndexError, KeyError) as exc:
+                    logger.warning(
+                        "streaming_parse_error",
+                        error=str(exc),
+                        line=line[:100],
                     )
-                    return
-
-                async for raw_line in response.aiter_lines():
-                    # aiter_lines() returns str in production httpx; the test
-                    # mock yields bytes — normalise to str in both cases.
-                    line: str = raw_line.decode() if isinstance(raw_line, bytes) else raw_line
-                    if not line.startswith("data: "):
-                        continue
-
-                    data_str = line[6:]  # strip "data: " prefix
-                    if data_str.strip() == "[DONE]":
-                        break
-
-                    try:
-                        chunk = json.loads(data_str)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, IndexError, KeyError) as exc:
-                        logger.warning(
-                            "streaming_parse_error",
-                            error=str(exc),
-                            line=line[:100],
-                        )
-                        continue
+                    continue
 
     except httpx.TimeoutException:
         logger.error("streaming_timeout", timeout=settings.LLM_STREAM_TIMEOUT)
