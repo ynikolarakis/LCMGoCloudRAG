@@ -5,8 +5,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.v1.router import api_v1_router
+from app.clients import close_clients
 from app.config import settings
 from app.logging_config import setup_logging
 from app.middleware.logging import RequestLoggingMiddleware
@@ -33,6 +35,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await seed_dev_user(session)
 
     yield
+    await close_clients()
 
 
 def create_app() -> FastAPI:
@@ -47,6 +50,8 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    Instrumentator().instrument(application).expose(application, endpoint="/metrics")
 
     # Middleware (order matters — last added is first executed)
     application.add_middleware(

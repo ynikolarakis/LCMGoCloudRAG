@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.celery_app import celery_app
 from app.config import settings
 from app.database import async_session_factory
+from app.metrics import celery_task_duration, celery_tasks_total, documents_ingested_total
 from app.models import Document, DocumentStatus
 from app.pipelines.chunking import ChunkResult, chunk_document, chunk_text, count_tokens
 from app.pipelines.ingestion import create_document_chunks, ingest_document, parse_document
@@ -162,9 +163,17 @@ def ingest_document_task(self, doc_id: str, file_path: str, client_id: str) -> d
     Returns:
         Dict with keys ``doc_id``, ``status``, and ``chunk_count``.
     """
+    import time
+
+    start = time.perf_counter()
     try:
-        return _run_async(_do_ingest(doc_id, file_path, client_id))  # type: ignore[return-value]
+        result = _run_async(_do_ingest(doc_id, file_path, client_id))
+        celery_tasks_total.labels(task_name="ingest_document", status="success").inc()
+        documents_ingested_total.labels(status="completed").inc()
+        return result  # type: ignore[return-value]
     except Exception as exc:
+        celery_tasks_total.labels(task_name="ingest_document", status="failure").inc()
+        documents_ingested_total.labels(status="failed").inc()
         retry_delays = [10, 60, 300]
         delay = retry_delays[min(self.request.retries, len(retry_delays) - 1)]
         logger.warning(
@@ -175,3 +184,5 @@ def ingest_document_task(self, doc_id: str, file_path: str, client_id: str) -> d
             delay=delay,
         )
         raise self.retry(exc=exc, countdown=delay) from exc
+    finally:
+        celery_task_duration.labels(task_name="ingest_document").observe(time.perf_counter() - start)

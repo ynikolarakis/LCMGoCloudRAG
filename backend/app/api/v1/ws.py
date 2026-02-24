@@ -13,6 +13,14 @@ from app.auth import DEV_USER_ID
 from app.config import settings
 from app.database import async_session_factory
 from app.guardrails import check_faithfulness, scan_input
+from app.metrics import (
+    guardrail_blocks_total,
+    rag_faithfulness_score,
+    rag_generation_duration,
+    rag_query_duration,
+    rag_retrieval_duration,
+    websocket_connections,
+)
 from app.models import Query, QueryResponse
 from app.models.base import AuditAction
 from app.pipelines.query import retrieve_context
@@ -232,6 +240,7 @@ async def websocket_query(websocket: WebSocket) -> None:
         websocket: The Starlette WebSocket connection.
     """
     await websocket.accept()
+    websocket_connections.inc()
     logger.info("ws_connection_opened", client=str(websocket.client))
 
     try:
@@ -261,6 +270,8 @@ async def websocket_query(websocket: WebSocket) -> None:
         logger.error("ws_unhandled_error", error=str(exc))
         with contextlib.suppress(Exception):
             await websocket.send_json({"type": "error", "detail": "Internal server error"})
+    finally:
+        websocket_connections.dec()
 
 
 async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
@@ -288,6 +299,7 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
     if guardrail_result["blocked"]:
         reason: str = guardrail_result.get("reason") or "guardrail_blocked"
         logger.warning("ws_query_blocked", reason=reason, client_id=client_id)
+        guardrail_blocks_total.labels(type="prompt_injection").inc()
         asyncio.ensure_future(
             _write_query_audit(
                 action=AuditAction.GUARDRAIL_BLOCKED,
@@ -307,11 +319,13 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
 
     # 4. Retrieve context (synchronous pipeline in thread)
     start_time = time.perf_counter()
+    retrieval_start = time.perf_counter()
     retrieval_result: dict[str, Any] = await asyncio.to_thread(
         retrieve_context,
         question=question,
         client_id=client_id,
     )
+    rag_retrieval_duration.observe(time.perf_counter() - retrieval_start)
 
     formatted_context: str = retrieval_result["formatted_context"]
     citations_raw: list[dict[str, Any]] = retrieval_result.get("citations", [])
@@ -319,6 +333,7 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
 
     # 5. Stream real tokens from Ollama
     answer_parts: list[str] = []
+    gen_start = time.perf_counter()
     try:
         async for token in stream_llm_response(formatted_context, question, conversation_history):
             answer_parts.append(token)
@@ -328,9 +343,11 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
         if not answer_parts:
             await websocket.send_json({"type": "error", "detail": "Streaming failed"})
             return
+    rag_generation_duration.observe(time.perf_counter() - gen_start)
 
     answer = "".join(answer_parts)
     latency_ms = round((time.perf_counter() - start_time) * 1000)
+    rag_query_duration.observe(latency_ms / 1000)
 
     # 6. Faithfulness check on assembled answer
     faithfulness_score: float = 1.0
@@ -347,6 +364,7 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
                     "token": "\n\n[Note: Response could not be verified against source documents.]",
                 }
             )
+    rag_faithfulness_score.observe(faithfulness_score)
 
     # 7. Citations
     citations_json: list[dict[str, Any]] = [

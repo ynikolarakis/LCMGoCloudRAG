@@ -5,6 +5,7 @@ import functools
 import structlog
 
 from app.config import settings
+from app.metrics import guardrail_blocks_total
 
 logger = structlog.get_logger()
 
@@ -47,6 +48,7 @@ def scan_input(query: str) -> dict:
             risk_score=risk_score,
             query_preview=query[:100],
         )
+        guardrail_blocks_total.labels(type="prompt_injection").inc()
         return {"blocked": True, "reason": "prompt_injection", "risk_score": risk_score}
 
     return {"blocked": False, "reason": None, "risk_score": risk_score}
