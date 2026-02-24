@@ -1,0 +1,52 @@
+[
+  {
+    "question": "What are the payment terms in the contract?",
+    "ground_truth": "Payment terms are net 30 days from invoice date.",
+    "expected_source": "contract.pdf"
+  },
+  {
+    "question": "Ποια είναι η διάρκεια της σύμβασης;",
+    "ground_truth": "Η σύμβαση ισχύει για είκοσι τέσσερις (24) μήνες.",
+    "expected_source": "contract.pdf"
+  },
+  {
+    "question": "Who are the parties involved in the agreement?",
+    "ground_truth": "The agreement is between the company and the client as specified in the document header.",
+    "expected_source": "agreement.pdf"
+  },
+  {
+    "question": "What happens if a payment is late?",
+    "ground_truth": "Late payments incur a penalty as specified in the penalty clause.",
+    "expected_source": "contract.pdf"
+  },
+  {
+    "question": "Ποιες είναι οι υποχρεώσεις του εργοδότη;",
+    "ground_truth": "Ο εργοδότης υποχρεούται να παρέχει ασφαλές περιβάλλον εργασίας.",
+    "expected_source": "employment.pdf"
+  },
+  {
+    "question": "What is the termination clause?",
+    "ground_truth": "Either party may terminate with 30 days written notice.",
+    "expected_source": "contract.pdf"
+  },
+  {
+    "question": "What are the confidentiality obligations?",
+    "ground_truth": "Both parties must maintain confidentiality of proprietary information for 5 years after termination.",
+    "expected_source": "nda.pdf"
+  },
+  {
+    "question": "Ποια είναι η πολιτική επιστροφών;",
+    "ground_truth": "Οι επιστροφές γίνονται εντός 14 ημερών από την παραλαβή.",
+    "expected_source": "policy.pdf"
+  },
+  {
+    "question": "What insurance coverage is required?",
+    "ground_truth": "The contractor must maintain professional liability insurance of at least $1 million.",
+    "expected_source": "contract.pdf"
+  },
+  {
+    "question": "What is the governing law for this contract?",
+    "ground_truth": "This contract is governed by the laws of Greece.",
+    "expected_source": "contract.pdf"
+  }
+]
