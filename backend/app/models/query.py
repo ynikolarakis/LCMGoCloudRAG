@@ -18,9 +18,13 @@ class Query(Base):
     query_text: Mapped[str] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     client_id: Mapped[str] = mapped_column(String(100), index=True)
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     response: Mapped[QueryResponse | None] = relationship(back_populates="query", uselist=False)
+    conversation: Mapped[object | None] = relationship("Conversation", back_populates="queries")
 
 
 class QueryResponse(Base):
