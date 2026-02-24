@@ -14,8 +14,14 @@ import {
   type WsCitation,
 } from "@/lib/websocket";
 import { useAuth } from "@/components/AuthProvider";
+import { fetchConversationMessages } from "@/lib/api";
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  conversationId?: string | null;
+  onConversationChange?: (convId: string) => void;
+}
+
+export function ChatInterface({ conversationId = null, onConversationChange }: ChatInterfaceProps) {
   const t = useTranslations("chat");
   const { token } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -53,7 +59,7 @@ export function ChatInterface() {
           return updated;
         });
       },
-      onDone: () => {
+      onDone: (_latencyMs: number, doneConversationId?: string) => {
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
@@ -63,6 +69,9 @@ export function ChatInterface() {
           return updated;
         });
         setIsStreaming(false);
+        if (doneConversationId && onConversationChange) {
+          onConversationChange(doneConversationId);
+        }
       },
       onError: (detail: string) => {
         setMessages((prev) => [
@@ -77,7 +86,29 @@ export function ChatInterface() {
     return () => {
       ws.disconnect();
     };
-  }, [token]);
+  }, [token, onConversationChange]);
+
+  // Load conversation messages when conversationId changes
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+    let cancelled = false;
+    fetchConversationMessages(conversationId).then((msgs) => {
+      if (cancelled) return;
+      setMessages(
+        msgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          isStreaming: false,
+        })),
+      );
+    }).catch(() => {
+      // silently fail — messages will be empty
+    });
+    return () => { cancelled = true; };
+  }, [conversationId]);
 
   const handleSend = useCallback(() => {
     const question = input.trim();
@@ -91,8 +122,8 @@ export function ChatInterface() {
     setInput("");
     setIsStreaming(true);
 
-    wsRef.current?.send({ type: "query", question });
-  }, [input, isStreaming]);
+    wsRef.current?.send({ type: "query", question, conversation_id: conversationId || undefined });
+  }, [input, isStreaming, conversationId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -102,7 +133,7 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex h-screen flex-col" data-testid="chat-interface">
+    <div className="flex h-full flex-col" data-testid="chat-interface">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-lg font-semibold">{t("title")}</h2>

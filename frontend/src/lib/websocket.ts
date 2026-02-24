@@ -9,7 +9,7 @@ export interface WsCitation {
 export interface WebSocketCallbacks {
   onToken?: (content: string) => void;
   onCitations?: (citations: WsCitation[]) => void;
-  onDone?: (latencyMs: number) => void;
+  onDone?: (latencyMs: number, conversationId?: string) => void;
   onError?: (detail: string) => void;
   onStatusChange?: (status: ConnectionStatus) => void;
 }
@@ -92,7 +92,7 @@ export class WebSocketManager {
         this.callbacks.onCitations?.(data.citations as WsCitation[]);
         break;
       case "done":
-        this.callbacks.onDone?.(data.latency_ms as number);
+        this.callbacks.onDone?.(data.latency_ms as number, data.conversation_id as string | undefined);
         break;
       case "error":
         this.callbacks.onError?.(data.detail as string);
