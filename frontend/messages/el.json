@@ -33,7 +33,11 @@
       "disconnected": "Αποσυνδεδεμένο"
     },
     "streaming": "Δημιουργία απάντησης...",
-    "citationsLabel": "Πηγές"
+    "citationsLabel": "Πηγές",
+    "newConversation": "Νέα Συνομιλία",
+    "conversations": "Συνομιλίες",
+    "deleteConversation": "Διαγραφή",
+    "noConversations": "Δεν υπάρχουν συνομιλίες"
   },
   "documents": {
     "title": "Έγγραφα",

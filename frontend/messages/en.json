@@ -33,7 +33,11 @@
       "disconnected": "Disconnected"
     },
     "streaming": "Generating answer...",
-    "citationsLabel": "Sources"
+    "citationsLabel": "Sources",
+    "newConversation": "New Chat",
+    "conversations": "Conversations",
+    "deleteConversation": "Delete",
+    "noConversations": "No conversations yet"
   },
   "documents": {
     "title": "Documents",

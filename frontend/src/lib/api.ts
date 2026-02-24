@@ -74,6 +74,27 @@ export interface PaginatedAuditLogsResponse {
   page_size: number;
 }
 
+export interface ConversationResponse {
+  id: string;
+  title: string | null;
+  client_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedConversationsResponse {
+  items: ConversationResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
 // --- Auth helpers ---
 
 function authHeaders(): Record<string, string> {
@@ -159,4 +180,35 @@ export async function fetchAuditLogs(
   if (action) params.set("action", action);
 
   return apiFetch<PaginatedAuditLogsResponse>(`/admin/audit-logs?${params}`);
+}
+
+export async function fetchConversations(
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<PaginatedConversationsResponse> {
+  return apiFetch<PaginatedConversationsResponse>(
+    `/conversations?page=${page}&page_size=${pageSize}`,
+  );
+}
+
+export async function createConversation(
+  title?: string,
+): Promise<ConversationResponse> {
+  return apiFetch<ConversationResponse>("/conversations", {
+    method: "POST",
+    body: JSON.stringify({ title: title || null }),
+  });
+}
+
+export async function fetchConversationMessages(
+  convId: string,
+): Promise<ConversationMessage[]> {
+  return apiFetch<ConversationMessage[]>(`/conversations/${convId}/messages`);
+}
+
+export async function deleteConversation(convId: string): Promise<void> {
+  await fetch(`${API_BASE}/conversations/${convId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
 }
