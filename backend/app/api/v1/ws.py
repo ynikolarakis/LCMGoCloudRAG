@@ -14,7 +14,8 @@ from app.database import async_session_factory
 from app.guardrails import check_faithfulness, scan_input
 from app.models import Query, QueryResponse
 from app.models.base import AuditAction
-from app.pipelines.query import query_documents
+from app.pipelines.query import retrieve_context
+from app.pipelines.streaming import stream_llm_response
 
 logger = structlog.get_logger()
 
@@ -113,11 +114,11 @@ async def websocket_query(websocket: WebSocket) -> None:
       and done messages
 
     Query flow:
-        1. Send ``{"type": "status", "status": "processing"}``
-        2. Run input guardrail (``scan_input``); send error and return if blocked
-        3. Run ``query_documents`` in a thread (pipeline is synchronous)
-        4. Run faithfulness check; replace answer if score is too low
-        5. Stream individual tokens as ``{"type": "token", "token": "..."}``
+        1. Run input guardrail (``scan_input``); send error and return if blocked
+        2. Send ``{"type": "status", "status": "processing"}``
+        3. Run ``retrieve_context`` in a thread (synchronous Haystack pipeline)
+        4. Stream real tokens from Ollama via ``stream_llm_response`` async generator
+        5. Run faithfulness check on the assembled answer; append a note if unfaithful
         6. Send ``{"type": "citations", "citations": [...]}``
         7. Send ``{"type": "done", "latency_ms": <int>}``
         8. Persist Query + QueryResponse rows (fire-and-forget)
@@ -161,13 +162,15 @@ async def websocket_query(websocket: WebSocket) -> None:
 async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
     """Handle a single ``query`` message on the WebSocket.
 
-    Runs the full RAG pipeline, streams the response tokens, then fires off
-    persistence and audit tasks in the background without blocking the client.
+    Runs retrieval, then streams real tokens from Ollama, then fires off
+    persistence and audit tasks in the background.
 
     Args:
         websocket: The active WebSocket connection.
         data: The parsed JSON message dict containing at minimum ``question``.
     """
+    import time
+
     question: str = data.get("question", "").strip()
     client_id: str = settings.CLIENT_ID
 
@@ -175,13 +178,11 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
         await websocket.send_json({"type": "error", "detail": "question field is required"})
         return
 
-    # 1. Input guardrail (run before sending status so blocked queries never
-    #    receive a spurious "processing" message — the error is the first reply)
+    # 1. Input guardrail
     guardrail_result: dict[str, Any] = scan_input(question)
     if guardrail_result["blocked"]:
         reason: str = guardrail_result.get("reason") or "guardrail_blocked"
         logger.warning("ws_query_blocked", reason=reason, client_id=client_id)
-
         asyncio.ensure_future(
             _write_query_audit(
                 action=AuditAction.GUARDRAIL_BLOCKED,
@@ -189,43 +190,54 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
                 client_id=client_id,
             )
         )
-
         await websocket.send_json({"type": "error", "detail": reason})
         return
 
-    # 2. Acknowledge receipt (only after guardrail passes)
+    # 2. Acknowledge
     await websocket.send_json({"type": "status", "status": "processing"})
 
-    # 3. Run RAG pipeline in thread (synchronous function)
-    result: dict[str, Any] = await asyncio.to_thread(
-        query_documents,
+    # 3. Retrieve context (synchronous pipeline in thread)
+    start_time = time.perf_counter()
+    retrieval_result: dict[str, Any] = await asyncio.to_thread(
+        retrieve_context,
         question=question,
         client_id=client_id,
     )
 
-    answer: str = result["answer"]
-    citations_raw: list[dict[str, Any]] = result.get("citations", [])
-    latency_ms: int = result["latency_ms"]
-    model_used: str = result["model_used"]
+    formatted_context: str = retrieval_result["formatted_context"]
+    citations_raw: list[dict[str, Any]] = retrieval_result.get("citations", [])
+    retrieved_docs = retrieval_result.get("documents", [])
 
-    # 4. Faithfulness check
+    # 4. Stream real tokens from Ollama
+    answer_parts: list[str] = []
+    try:
+        async for token in stream_llm_response(formatted_context, question):
+            answer_parts.append(token)
+            await websocket.send_json({"type": "token", "token": token})
+    except Exception as exc:
+        logger.error("ws_streaming_error", error=str(exc))
+        if not answer_parts:
+            await websocket.send_json({"type": "error", "detail": "Streaming failed"})
+            return
+
+    answer = "".join(answer_parts)
+    latency_ms = round((time.perf_counter() - start_time) * 1000)
+
+    # 5. Faithfulness check on assembled answer
     faithfulness_score: float = 1.0
-    retrieved_docs = result.get("retrieved_docs", [])
     retrieved_context = "\n\n".join(doc.content for doc in retrieved_docs if doc.content)
-    if retrieved_context:
+    if retrieved_context and answer:
         faithfulness_score, is_faithful = check_faithfulness(
             context=retrieved_context,
             response=answer,
         )
         if not is_faithful:
-            answer = "Cannot verify answer against available documents."
-            citations_raw = []
-
-    # 5. Stream tokens (word-level split)
-    words = answer.split(" ")
-    for i, word in enumerate(words):
-        token = word if i == len(words) - 1 else word + " "
-        await websocket.send_json({"type": "token", "token": token})
+            await websocket.send_json(
+                {
+                    "type": "token",
+                    "token": "\n\n[Note: Response could not be verified against source documents.]",
+                }
+            )
 
     # 6. Citations
     citations_json: list[dict[str, Any]] = [
@@ -250,14 +262,14 @@ async def _handle_query(websocket: WebSocket, data: dict[str, Any]) -> None:
         client_id=client_id,
     )
 
-    # 8. Fire-and-forget: persist rows and write audit logs
+    # 8. Fire-and-forget: persist and audit
     asyncio.ensure_future(
         _persist_query_response(
             question=question,
             answer=answer,
             citations_json=citations_json,
             latency_ms=latency_ms,
-            model_used=model_used,
+            model_used=settings.LLM_MODEL,
             faithfulness_score=faithfulness_score,
             client_id=client_id,
         )

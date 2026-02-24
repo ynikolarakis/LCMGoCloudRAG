@@ -57,8 +57,10 @@ async def stream_llm_response(
     url = f"{settings.LLM_BASE_URL}/chat/completions"
 
     try:
-        async with httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT) as client:
-            async with client.stream("POST", url, json=payload) as response:
+        async with (
+            httpx.AsyncClient(timeout=settings.LLM_STREAM_TIMEOUT) as client,
+            client.stream("POST", url, json=payload) as response,
+        ):
                 if response.status_code != 200:
                     body = await response.aread()
                     logger.error(
