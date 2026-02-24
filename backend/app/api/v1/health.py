@@ -3,10 +3,9 @@ from __future__ import annotations
 import httpx
 import structlog
 from fastapi import APIRouter
-from qdrant_client import QdrantClient
-from redis.asyncio import Redis
 from sqlalchemy import text
 
+from app.clients import get_qdrant_client, get_redis_client
 from app.config import settings
 from app.database import async_session_factory
 from app.schemas.health import HealthResponse, ServiceStatus
@@ -27,9 +26,8 @@ async def _check_database() -> ServiceStatus:
 
 async def _check_qdrant() -> ServiceStatus:
     try:
-        client = QdrantClient(url=settings.QDRANT_URL, timeout=5)
+        client = get_qdrant_client()
         client.get_collections()
-        client.close()
         return ServiceStatus(status="healthy")
     except Exception as e:
         logger.error("health_check_qdrant_failed", error=str(e))
@@ -38,9 +36,8 @@ async def _check_qdrant() -> ServiceStatus:
 
 async def _check_redis() -> ServiceStatus:
     try:
-        client = Redis.from_url(settings.REDIS_URL, socket_timeout=5)
+        client = get_redis_client()
         await client.ping()
-        await client.aclose()
         return ServiceStatus(status="healthy")
     except Exception as e:
         logger.error("health_check_redis_failed", error=str(e))
