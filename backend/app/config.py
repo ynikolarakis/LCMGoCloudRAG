@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     RETRIEVER_TOP_K: int = 50
     LLM_TEMPERATURE: float = 0.1
     LLM_MAX_TOKENS: int = 1024
+    LLM_STREAM_TIMEOUT: int = 120  # seconds
 
     # Sparse Embedding
     SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
