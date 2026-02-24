@@ -22,6 +22,7 @@ class Document(Base, TimestampMixin):
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_id: Mapped[str] = mapped_column(String(100), index=True)
     uploaded_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 

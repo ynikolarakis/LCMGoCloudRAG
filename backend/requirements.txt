@@ -26,6 +26,7 @@ docling>=2.0.0
 
 # Chunking
 tiktoken>=0.7.0
+langdetect>=1.0.9
 
 # Task Queue (placeholder)
 celery[redis]>=5.4.0
