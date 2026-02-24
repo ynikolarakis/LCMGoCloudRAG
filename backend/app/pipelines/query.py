@@ -117,6 +117,78 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
     return pipeline
 
 
+def retrieve_context(question: str, client_id: str = "default") -> dict:
+    """Run the retrieval + reranking pipeline without LLM generation.
+
+    Args:
+        question: The user's question.
+        client_id: Client identifier for multi-tenancy filtering.
+
+    Returns:
+        Dict with keys: documents, formatted_context, citations, latency_ms.
+    """
+    logger.info("retrieval_started", question=question[:100], client_id=client_id)
+    start_time = time.perf_counter()
+
+    store = _get_document_store()
+    pipeline = _build_query_pipeline(store)
+
+    variants = expand_query(question)
+
+    all_retrieved: dict[str, object] = {}
+    for variant in variants:
+        result = pipeline.run(
+            {
+                "sparse_embedder": {"text": variant},
+                "dense_embedder": {"text": variant},
+                "retriever": {
+                    "filters": {
+                        "operator": "AND",
+                        "conditions": [
+                            {"field": "meta.client_id", "operator": "==", "value": client_id},
+                        ],
+                    },
+                },
+                "ranker": {"query": variant},
+                "prompt_builder": {"query": question},
+            }
+        )
+
+        for doc in result.get("ranker", {}).get("documents", result.get("retriever", {}).get("documents", [])):
+            doc_key = doc.id
+            if doc_key not in all_retrieved or (doc.score and doc.score > all_retrieved[doc_key].score):
+                all_retrieved[doc_key] = doc
+
+    retrieved_docs = list(all_retrieved.values())
+    latency_ms = round((time.perf_counter() - start_time) * 1000)
+
+    # Build formatted context for LLM prompt
+    context_parts: list[str] = []
+    for i, doc in enumerate(retrieved_docs, 1):
+        source = doc.meta.get("source", "unknown")
+        page = doc.meta.get("page_num", "?")
+        context_parts.append(f"[{i}] Source: {source}, Page {page}\n{doc.content}")
+    formatted_context = "\n\n".join(context_parts)
+
+    citations = [
+        {
+            "source": doc.meta.get("source", "unknown"),
+            "page": doc.meta.get("page_num"),
+            "content_preview": doc.content[:200] if doc.content else "",
+        }
+        for doc in retrieved_docs
+    ]
+
+    logger.info("retrieval_complete", latency_ms=latency_ms, num_docs=len(retrieved_docs))
+
+    return {
+        "documents": retrieved_docs,
+        "formatted_context": formatted_context,
+        "citations": citations,
+        "latency_ms": latency_ms,
+    }
+
+
 def query_documents(question: str, client_id: str = "default") -> dict:
     """Run the hybrid RAG query pipeline with query expansion.
 
