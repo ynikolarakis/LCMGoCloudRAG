@@ -14,7 +14,7 @@ logger = structlog.get_logger()
 EXPANSION_SYSTEM_PROMPT = """\
 Generate 2-3 search query variants for the following question.
 Include at least one Greek and one English variant.
-Return ONLY a JSON array of strings, no other text.
+Return ONLY a JSON array of strings, no other text. /no_think
 Example: ["What is the contract term?", "Ποια είναι η διάρκεια της σύμβασης;"]\
 """
 
@@ -39,7 +39,7 @@ def expand_query(question: str) -> list[str]:
             api_base_url=settings.LLM_BASE_URL,
             generation_kwargs={
                 "temperature": 0.3,
-                "max_tokens": 200,
+                "max_tokens": 2000,
             },
         )
 
@@ -50,6 +50,16 @@ def expand_query(question: str) -> list[str]:
 
         result = generator.run(messages=messages)
         reply_text = result["replies"][0].text.strip()
+
+        # Qwen3 may wrap output in <think>...</think> tags — strip them
+        import re
+
+        reply_text = re.sub(r"<think>.*?</think>", "", reply_text, flags=re.DOTALL).strip()
+
+        # Extract JSON array if embedded in other text
+        json_match = re.search(r"\[.*\]", reply_text, flags=re.DOTALL)
+        if json_match:
+            reply_text = json_match.group(0)
 
         variants = json.loads(reply_text)
         if not isinstance(variants, list) or not all(isinstance(v, str) for v in variants):

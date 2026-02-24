@@ -38,7 +38,7 @@ Context:
 {{ doc.content }}
 
 {% endfor %}
-Question: {{ query }}\
+Question: {{ query }} /no_think\
 """
 
 
@@ -53,29 +53,25 @@ def _get_document_store() -> QdrantDocumentStore:
     )
 
 
-def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
-    """Build the Haystack hybrid query pipeline: sparse+dense embed -> hybrid retrieve -> prompt -> generate."""
+def _build_retrieval_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
+    """Build a retrieval-only pipeline: sparse+dense embed -> hybrid retrieve -> rerank."""
     pipeline = Pipeline()
 
-    # Sparse text embedder (BM25)
     sparse_embedder = FastembedSparseTextEmbedder(
         model=settings.SPARSE_EMBEDDING_MODEL,
     )
 
-    # Dense text embedder (Qwen3 via Ollama)
     dense_embedder = OpenAITextEmbedder(
         api_key=Secret.from_token("ollama"),
         model=settings.EMBEDDING_MODEL,
         api_base_url=settings.EMBEDDING_BASE_URL,
     )
 
-    # Hybrid retriever (RRF fusion of dense + sparse)
     retriever = QdrantHybridRetriever(
         document_store=document_store,
         top_k=settings.RETRIEVER_TOP_K,
     )
 
-    # Reranker (cross-encoder)
     ranker = TransformersSimilarityRanker(
         model=settings.RERANKER_MODEL,
         top_k=settings.RERANKER_TOP_K,
@@ -83,14 +79,50 @@ def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
         scale_score=True,
     )
 
-    # Chat prompt builder with system + user template
+    pipeline.add_component("sparse_embedder", sparse_embedder)
+    pipeline.add_component("dense_embedder", dense_embedder)
+    pipeline.add_component("retriever", retriever)
+    pipeline.add_component("ranker", ranker)
+
+    pipeline.connect("sparse_embedder.sparse_embedding", "retriever.query_sparse_embedding")
+    pipeline.connect("dense_embedder.embedding", "retriever.query_embedding")
+    pipeline.connect("retriever.documents", "ranker.documents")
+
+    return pipeline
+
+
+def _build_query_pipeline(document_store: QdrantDocumentStore) -> Pipeline:
+    """Build the Haystack hybrid query pipeline: sparse+dense embed -> hybrid retrieve -> prompt -> generate."""
+    pipeline = Pipeline()
+
+    sparse_embedder = FastembedSparseTextEmbedder(
+        model=settings.SPARSE_EMBEDDING_MODEL,
+    )
+
+    dense_embedder = OpenAITextEmbedder(
+        api_key=Secret.from_token("ollama"),
+        model=settings.EMBEDDING_MODEL,
+        api_base_url=settings.EMBEDDING_BASE_URL,
+    )
+
+    retriever = QdrantHybridRetriever(
+        document_store=document_store,
+        top_k=settings.RETRIEVER_TOP_K,
+    )
+
+    ranker = TransformersSimilarityRanker(
+        model=settings.RERANKER_MODEL,
+        top_k=settings.RERANKER_TOP_K,
+        score_threshold=settings.RERANKER_THRESHOLD,
+        scale_score=True,
+    )
+
     messages_template = [
         ChatMessage.from_system(SYSTEM_PROMPT),
         ChatMessage.from_user(USER_TEMPLATE),
     ]
     prompt_builder = ChatPromptBuilder(template=messages_template)
 
-    # LLM generator (OpenAI-compatible — works with Ollama and vLLM)
     llm = OpenAIChatGenerator(
         api_key=Secret.from_token("ollama"),
         model=settings.LLM_MODEL,
@@ -131,7 +163,7 @@ def retrieve_context(question: str, client_id: str = "default") -> dict:
     start_time = time.perf_counter()
 
     store = _get_document_store()
-    pipeline = _build_query_pipeline(store)
+    pipeline = _build_retrieval_pipeline(store)
 
     variants = expand_query(question)
 
@@ -150,8 +182,7 @@ def retrieve_context(question: str, client_id: str = "default") -> dict:
                     },
                 },
                 "ranker": {"query": variant},
-                "prompt_builder": {"query": question},
-            }
+            },
         )
 
         for doc in result.get("ranker", {}).get("documents", result.get("retriever", {}).get("documents", [])):
@@ -227,11 +258,12 @@ def query_documents(question: str, client_id: str = "default") -> dict:
                 },
                 "ranker": {"query": variant},
                 "prompt_builder": {"query": question},
-            }
+            },
+            include_outputs_from={"ranker", "retriever"},
         )
 
         # Merge retrieved docs (keep highest-scored per doc ID)
-        for doc in result.get("retriever", {}).get("documents", []):
+        for doc in result.get("ranker", {}).get("documents", result.get("retriever", {}).get("documents", [])):
             doc_key = doc.id
             if doc_key not in all_retrieved or (doc.score and doc.score > all_retrieved[doc_key].score):
                 all_retrieved[doc_key] = doc

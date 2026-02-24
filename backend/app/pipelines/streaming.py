@@ -23,6 +23,10 @@ async def stream_llm_response(
     and yields individual token strings as they arrive.  The function handles
     the ``data: [DONE]`` sentinel that terminates the SSE stream.
 
+    Qwen3 models emit ``<think>...</think>`` reasoning blocks before the actual
+    answer.  This generator silently absorbs those tokens so only the final
+    visible answer is streamed to the client.
+
     Args:
         context: Formatted retrieved context string (pre-built numbered chunks).
         question: The user's question.
@@ -43,7 +47,7 @@ async def stream_llm_response(
     if conversation_history:
         messages.extend(conversation_history)
 
-    user_content = f"Context:\n{context}\n\nQuestion: {question}"
+    user_content = f"Context:\n{context}\n\nQuestion: {question} /no_think"
     messages.append({"role": "user", "content": user_content})
 
     payload: dict[str, object] = {
@@ -70,6 +74,8 @@ async def stream_llm_response(
                 )
                 return
 
+            in_think_block = False
+
             async for raw_line in response.aiter_lines():
                 # aiter_lines() returns str in production httpx; the test
                 # mock yields bytes — normalise to str in both cases.
@@ -85,8 +91,22 @@ async def stream_llm_response(
                     chunk = json.loads(data_str)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content")
-                    if content:
-                        yield content
+                    if not content:
+                        continue
+
+                    # Filter Qwen3 <think>...</think> reasoning blocks
+                    if "<think>" in content:
+                        in_think_block = True
+                    if in_think_block:
+                        if "</think>" in content:
+                            in_think_block = False
+                            # Yield any text after the closing tag
+                            after = content.split("</think>", 1)[1]
+                            if after:
+                                yield after
+                        continue
+
+                    yield content
                 except (json.JSONDecodeError, IndexError, KeyError) as exc:
                     logger.warning(
                         "streaming_parse_error",

@@ -23,5 +23,5 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-# Auto-discover tasks in app.tasks package
-celery_app.autodiscover_tasks(["app.tasks"])
+# Explicitly include task modules so Celery registers them at startup
+celery_app.conf.include = ["app.tasks.ingestion"]
