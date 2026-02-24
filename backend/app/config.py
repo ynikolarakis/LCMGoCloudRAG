@@ -56,6 +56,16 @@ class Settings(BaseSettings):
     LLM_STREAM_TIMEOUT: int = 120  # seconds
     CONVERSATION_CONTEXT_MESSAGES: int = 5  # number of past messages to include
 
+    # Rate Limiting
+    RATE_LIMIT_DEFAULT: str = "100/minute"
+    RATE_LIMIT_AUTH: str = "10/minute"
+    RATE_LIMIT_QUERY: str = "30/minute"
+    RATE_LIMIT_UPLOAD: str = "10/minute"
+
+    # Cache
+    CACHE_ENABLED: bool = True
+    CACHE_TTL_SECONDS: int = 300  # 5 minutes
+
     # Sparse Embedding
     SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
 
